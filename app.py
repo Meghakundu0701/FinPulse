@@ -489,17 +489,30 @@ def fetch_history(coin_id, currency="inr", days=30):
 
 @st.cache_data(ttl=300)
 def fetch_global():
+    default_dom = {
+        "btc": 58.6,
+        "eth": 12.4,
+        "usdt": 6.2,
+        "bnb": 3.8,
+        "sol": 3.5,
+        "xrp": 2.8,
+        "usdc": 2.4,
+        "doge": 1.2,
+    }
     try:
         r = requests.get("https://api.coingecko.com/api/v3/global", timeout=8)
         data = r.json().get("data", {})
-        if data:
+        if data and isinstance(data, dict):
+            dom = data.get("market_cap_percentage")
+            if not dom or not isinstance(dom, dict) or len(dom) < 4:
+                data["market_cap_percentage"] = default_dom
             return data
     except Exception:
         pass
     return {
         "total_market_cap": {"usd": 2480000000000},
         "total_volume": {"usd": 89500000000},
-        "market_cap_percentage": {"btc": 54.2, "eth": 16.8},
+        "market_cap_percentage": default_dom,
         "market_cap_change_percentage_24h_usd": 2.14,
         "active_cryptocurrencies": 14250,
     }
@@ -992,24 +1005,61 @@ with s1:
 with s2:
     if glbl:
         dom = glbl.get("market_cap_percentage", {})
-        top = dict(sorted(dom.items(), key=lambda x: x[1], reverse=True)[:8])
+        if not dom or len(dom) < 3:
+            dom = {
+                "btc": 58.6,
+                "eth": 12.4,
+                "usdt": 6.2,
+                "bnb": 3.8,
+                "sol": 3.5,
+                "xrp": 2.8,
+                "usdc": 2.4,
+                "doge": 1.2,
+            }
+
+        # Take top 7 coins
+        top = dict(sorted(dom.items(), key=lambda x: x[1], reverse=True)[:7])
+        top_sum = sum(top.values())
+        labels = [k.upper() for k in top]
+        values = [round(float(v), 2) for v in top.values()]
+
+        # Include OTHERS to reflect real 100% market distribution
+        if top_sum < 100.0:
+            labels.append("OTHERS")
+            values.append(round(100.0 - top_sum, 2))
+
+        palette = [
+            "#3b82f6",  # BTC blue
+            "#10b981",  # ETH emerald
+            "#22c55e",  # USDT green
+            "#f59e0b",  # BNB gold
+            "#8b5cf6",  # SOL purple
+            "#06b6d4",  # XRP cyan
+            "#38bdf8",  # USDC sky
+            "#f97316",  # DOGE orange
+            "#475569",  # OTHERS slate
+        ]
+
         fig4 = go.Figure(go.Pie(
-            labels=[k.upper() for k in top],
-            values=list(top.values()),
+            labels=labels,
+            values=values,
             hole=0.6,
             marker=dict(
-                colors=["#3b82f6","#10b981","#f59e0b","#ef4444",
-                        "#8b5cf6","#ec4899","#06b6d4","#334155"],
+                colors=palette[:len(labels)],
                 line=dict(color="#03050a", width=2),
             ),
-            textfont=dict(family="DM Mono", size=9),
-            hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+            textinfo="label+percent",
+            textposition="outside",
+            textfont=dict(family="DM Mono", size=9, color="#94a3b8"),
+            hovertemplate="<b>%{label}</b>: %{value:.2f}% market share<extra></extra>",
         ))
         fig4.update_layout(
             **{**chart_layout("MARKET CAP DOMINANCE", height=300),
                "showlegend": True,
-               "legend": dict(bgcolor="rgba(0,0,0,0)",
-                              font=dict(size=8, family="DM Mono", color="#94a3b8"))},
+               "legend": dict(
+                   bgcolor="rgba(0,0,0,0)",
+                   font=dict(size=8, family="DM Mono", color="#94a3b8"),
+               )},
         )
         st.plotly_chart(fig4, use_container_width=True)
 
